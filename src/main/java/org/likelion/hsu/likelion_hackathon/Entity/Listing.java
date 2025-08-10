@@ -1,11 +1,18 @@
 package org.likelion.hsu.likelion_hackathon.Entity;
 
 import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 import org.likelion.hsu.likelion_hackathon.Enum.ListingType;
+
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
+@Getter
+@Setter
+@NoArgsConstructor
 @Entity
 @Table(name = "listings")
 public class Listing {
@@ -49,35 +56,4 @@ public class Listing {
     void onUpdate() {
         updatedAt = LocalDateTime.now();
     }
-
-    // ===== Getters and Setters =====
-    public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
-
-    public ListingType getType() { return type; }
-    public void setType(ListingType type) { this.type = type; }
-
-    public ListingDetails getDetails() { return details; }
-    public void setDetails(ListingDetails details) { this.details = details; }
-
-    public ListingPeriod getPeriod() { return period; }
-    public void setPeriod(ListingPeriod period) { this.period = period; }
-
-    public ListingPricing getPricing() { return pricing; }
-    public void setPricing(ListingPricing pricing) { this.pricing = pricing; }
-
-    public List<ListingPhoto> getPhotos() { return photos; }
-    public void setPhotos(List<ListingPhoto> photos) { this.photos = photos; }
-
-    public Long getViewCount() { return viewCount; }
-    public void setViewCount(Long viewCount) { this.viewCount = viewCount; }
-
-    public String getPin() { return pin; }
-    public void setPin(String pin) { this.pin = pin; }
-
-    public LocalDateTime getCreatedAt() { return createdAt; }
-    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
-
-    public LocalDateTime getUpdatedAt() { return updatedAt; }
-    public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
 }

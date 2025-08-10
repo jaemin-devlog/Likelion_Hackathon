@@ -1,14 +1,14 @@
 package org.likelion.hsu.likelion_hackathon.Controller;
 
-import org.likelion.hsu.likelion_hackathon.Dto.*;
 import org.likelion.hsu.likelion_hackathon.Dto.Request.ListingCreateRequest;
 import org.likelion.hsu.likelion_hackathon.Dto.Request.ListingUpdateRequest;
 import org.likelion.hsu.likelion_hackathon.Dto.Response.*;
-import org.likelion.hsu.likelion_hackathon.Enum.ListingType;
 import org.likelion.hsu.likelion_hackathon.Service.ListingService;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.List;
 
 @RestController
@@ -21,17 +21,22 @@ public class ListingController {
         this.listingService = listingService;
     }
 
-    /* 매물 등록 */
+    /* 숙박,양도 매물 등록 */
     @PostMapping(consumes = "application/json", produces = "application/json")
     public ResponseEntity<ListingResponse> create(@RequestBody ListingCreateRequest req) {
         return ResponseEntity.ok(listingService.create(req));
     }
 
-    /* 전체/타입별 조회 (?type=STAY | TRANSFER) */
-    @GetMapping(produces = "application/json")
-    public ResponseEntity<List<ListingResponse>> list(@RequestParam(required = false) ListingType type) {
-        if (type == null) return ResponseEntity.ok(listingService.findAll());
-        return ResponseEntity.ok(listingService.findByType(type));
+    /* 숙박 전체 리스트 (대표사진1, 건물명, 기간, 금액) */
+    @GetMapping("/stay")
+    public ResponseEntity<List<StayTopItem>> listStay() {
+        return ResponseEntity.ok(listingService.getStayList());
+    }
+
+    /* 양도 전체 리스트 (대표사진1, 건물명, 금액) */
+    @GetMapping("/transfer")
+    public ResponseEntity<List<TransferTopItem>> listTransfer() {
+        return ResponseEntity.ok(listingService.getTransferList());
     }
 
     /* 숙박 상세 조회*/
@@ -44,6 +49,28 @@ public class ListingController {
     @GetMapping("/transfer/{id}")
     public ResponseEntity<TransferDetailResponse> getTransferDetail(@PathVariable Long id) {
         return ResponseEntity.ok(listingService.getTransferDetail(id));
+    }
+
+    /* 숙박 필터링 검색: 대표사진1, 건물명, 날짜, 금액*/
+    @GetMapping("/stay/search")
+    public ResponseEntity<List<StayTopItem>> searchStay(
+            @RequestParam(required = false) String name, // 건물명 키워드
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(required = false) Integer minPrice,
+            @RequestParam(required = false) Integer maxPrice
+    ) {
+        return ResponseEntity.ok(
+                listingService.searchStay(name, startDate, endDate, minPrice, maxPrice)
+        );
+    }
+
+    /* 숙박, 양도 통합 검색 */
+    @GetMapping("/search")
+    public ResponseEntity<List<ListingSearchItem>> searchAll(@RequestParam(required = false) String name) {
+        return ResponseEntity.ok(listingService.searchAllByName(name));
     }
 
     /* 매물 수정 (PIN 검증 필요) */

@@ -9,7 +9,9 @@ import org.likelion.hsu.likelion_hackathon.Repository.ListingPhotoRepository;
 import org.likelion.hsu.likelion_hackathon.Repository.ListingRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.likelion.hsu.likelion_hackathon.Dto.Response.ListingSearchItem;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -72,6 +74,88 @@ public class ListingService {
                 .stream()
                 .map(this::toResponse)
                 .collect(Collectors.toList());
+    }
+
+    /** 숙박 전체 리스트 (카드용) */
+    @Transactional(readOnly = true)
+    public List<StayTopItem> getStayList() {
+        return listingRepository.findByType(ListingType.STAY)
+                .stream()
+                .map(l -> {
+                    StayTopItem dto = new StayTopItem();
+                    dto.setId(l.getId());
+                    dto.setThumbnailUrl(l.getPhotos().isEmpty() ? null : l.getPhotos().get(0).getUrl());
+                    dto.setBuildingName(l.getDetails().getBuildingName());
+                    dto.setStartDate(l.getPeriod().getStartDate());
+                    dto.setEndDate(l.getPeriod().getEndDate());
+                    dto.setPrice(l.getPricing().getPrice());
+                    return dto;
+                })
+                .collect(Collectors.toList());
+    }
+
+    /** 양도 전체 리스트 (카드용) */
+    @Transactional(readOnly = true)
+    public List<TransferTopItem> getTransferList() {
+        return listingRepository.findByType(ListingType.TRANSFER)
+                .stream()
+                .map(l -> {
+                    TransferTopItem dto = new TransferTopItem();
+                    dto.setId(l.getId());
+                    dto.setThumbnailUrl(
+                            l.getPhotos().isEmpty() ? null : l.getPhotos().get(0).getUrl()
+                    );
+                    dto.setBuildingName(l.getDetails().getBuildingName()); // ← 여기 추가
+                    dto.setPrice(l.getPricing().getPrice());
+                    return dto;
+                })
+                .collect(Collectors.toList());
+    }
+
+    /* 숙박 필터링 검색: 대표사진1, 건물명, 날짜, 금액*/
+    @Transactional(readOnly = true)
+    public List<StayTopItem> searchStay(String name,
+                                        LocalDate startDate,
+                                        LocalDate endDate,
+                                        Integer minPrice,
+                                        Integer maxPrice) {
+
+        // Repository에서 동적 조건 검색
+        List<Listing> list = listingRepository.searchStay(
+                ListingType.STAY, name, startDate, endDate, minPrice, maxPrice
+        );
+
+        // 카드 UI용 DTO 매핑 (대표사진 1장 + 건물명 + 날짜 + 금액)
+        return list.stream()
+                .map(l -> {
+                    StayTopItem dto = new StayTopItem();
+                    dto.setId(l.getId());
+                    dto.setThumbnailUrl(l.getPhotos().isEmpty() ? null : l.getPhotos().get(0).getUrl());
+                    dto.setBuildingName(l.getDetails().getBuildingName());
+                    dto.setStartDate(l.getPeriod().getStartDate());
+                    dto.setEndDate(l.getPeriod().getEndDate());
+                    dto.setPrice(l.getPricing().getPrice());
+                    return dto;
+                })
+                .collect(Collectors.toList());
+    }
+
+    /* 숙박, 양도 통합 검색 */
+    @Transactional(readOnly = true)
+    public List<ListingSearchItem> searchAllByName(String name) {
+        return listingRepository.searchByBuildingName(name).stream().map(l -> {
+            ListingSearchItem dto = new ListingSearchItem();
+            dto.setId(l.getId());
+            dto.setType(l.getType());
+            dto.setThumbnailUrl(l.getPhotos().isEmpty() ? null : l.getPhotos().get(0).getUrl());
+            dto.setBuildingName(l.getDetails().getBuildingName());
+            dto.setPrice(l.getPricing().getPrice());
+            if (l.getType() == ListingType.STAY) {
+                dto.setStartDate(l.getPeriod().getStartDate());
+                dto.setEndDate(l.getPeriod().getEndDate());
+            }
+            return dto;
+        }).collect(Collectors.toList());
     }
 
     /* 숙박 상세 조회*/
@@ -184,7 +268,7 @@ public class ListingService {
                 .collect(Collectors.toList());
     }
 
-    /** 양도 매물 Top10 (대표사진+금액) */
+    /** 양도 매물 Top10 (대표사진+건물명+금액) */
     @Transactional(readOnly = true)
     public List<TransferTopItem> getTop10TransferListings() {
         return listingRepository.findTop10ByTypeOrderByViewCountDesc(ListingType.TRANSFER)
@@ -195,6 +279,7 @@ public class ListingService {
                     dto.setThumbnailUrl(
                             listing.getPhotos().isEmpty() ? null : listing.getPhotos().get(0).getUrl()
                     );
+                    dto.setBuildingName(listing.getDetails().getBuildingName()); // ← 추가
                     dto.setPrice(listing.getPricing().getPrice());
                     return dto;
                 })
