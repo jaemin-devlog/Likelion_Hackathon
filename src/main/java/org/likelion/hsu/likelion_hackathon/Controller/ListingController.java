@@ -42,12 +42,14 @@ public class ListingController {
     /* 숙박 상세 조회*/
     @GetMapping("/stay/{id}")
     public ResponseEntity<StayDetailResponse> getStayDetail(@PathVariable Long id) {
+        listingService.increaseView(id); // 조회수 증가
         return ResponseEntity.ok(listingService.getStayDetail(id));
     }
 
     /* 양도 상세 조회*/
     @GetMapping("/transfer/{id}")
     public ResponseEntity<TransferDetailResponse> getTransferDetail(@PathVariable Long id) {
+        listingService.increaseView(id); // 조회수 증가
         return ResponseEntity.ok(listingService.getTransferDetail(id));
     }
 
@@ -87,20 +89,13 @@ public class ListingController {
         return ResponseEntity.noContent().build();
     }
 
-    /* 상세 진입 시 조회수 증가 */
-    @PostMapping("/{id}/view")
-    public ResponseEntity<Void> increaseView(@PathVariable Long id) {
-        listingService.increaseView(id);
-        return ResponseEntity.noContent().build();
-    }
-
     /* 조회수 상위 숙박 Top10: 대표사진+건물명+날짜+금액 */
     @GetMapping("/top/stay")
     public ResponseEntity<List<StayTopItem>> topStay() {
         return ResponseEntity.ok(listingService.getTop10StayListings());
     }
 
-    /* 조회수 상위 양도 Top10: 대표사진+금액 */
+    /* 조회수 상위 양도 Top10: 대표사진+건물명+금액 */
     @GetMapping("/top/transfer")
     public ResponseEntity<List<TransferTopItem>> topTransfer() {
         return ResponseEntity.ok(listingService.getTop10TransferListings());

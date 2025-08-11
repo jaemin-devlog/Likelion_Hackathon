@@ -242,16 +242,17 @@ public class ListingService {
     }
 
     /** 조회수 증가 */
+    @Transactional
     public void increaseView(Long id) {
-        Listing listing = listingRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Listing not found"));
-        listing.setViewCount(listing.getViewCount() + 1);
+        if (listingRepository.increaseView(id) == 0) {
+            throw new IllegalArgumentException("Listing not found");
+        }
     }
 
     /** 숙박 매물 Top10 (대표사진+건물명+날짜+금액) */
     @Transactional(readOnly = true)
     public List<StayTopItem> getTop10StayListings() {
-        return listingRepository.findTop10ByTypeOrderByViewCountDesc(ListingType.STAY)
+        return listingRepository.findTop10ByTypeOrderByViewCountDescCreatedAtDesc(ListingType.STAY)
                 .stream()
                 .map(listing -> {
                     StayTopItem dto = new StayTopItem();
@@ -271,7 +272,7 @@ public class ListingService {
     /** 양도 매물 Top10 (대표사진+건물명+금액) */
     @Transactional(readOnly = true)
     public List<TransferTopItem> getTop10TransferListings() {
-        return listingRepository.findTop10ByTypeOrderByViewCountDesc(ListingType.TRANSFER)
+        return listingRepository.findTop10ByTypeOrderByViewCountDescCreatedAtDesc(ListingType.TRANSFER)
                 .stream()
                 .map(listing -> {
                     TransferTopItem dto = new TransferTopItem();
