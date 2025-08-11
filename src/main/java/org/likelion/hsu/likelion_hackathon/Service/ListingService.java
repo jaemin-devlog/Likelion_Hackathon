@@ -207,6 +207,11 @@ public class ListingService {
                 .orElseThrow(() -> new IllegalArgumentException("Listing not found"));
         validatePin(listing, req.getPin());
 
+        // 과거 TRANSFER 데이터 대비: 임베디드 널 방어
+        if (listing.getDetails() == null) listing.setDetails(new ListingDetails());
+        if (listing.getPeriod()  == null) listing.setPeriod(new ListingPeriod());
+        if (listing.getPricing() == null) listing.setPricing(new ListingPricing());
+
         if (req.getType() != null) listing.setType(req.getType());
         if (req.getBuildingName() != null) listing.getDetails().setBuildingName(req.getBuildingName());
         if (req.getDescription() != null) listing.getDetails().setDescription(req.getDescription());
@@ -296,18 +301,24 @@ public class ListingService {
 
     private ListingResponse toResponse(Listing listing) {
         ListingResponse res = new ListingResponse();
+
+        // 널 가드: 임베디드가 null이어도 안전
+        ListingDetails d  = (listing.getDetails()  != null) ? listing.getDetails()  : new ListingDetails();
+        ListingPeriod  p  = (listing.getPeriod()   != null) ? listing.getPeriod()   : new ListingPeriod();
+        ListingPricing pr = (listing.getPricing()  != null) ? listing.getPricing()  : new ListingPricing();
+
         res.setId(listing.getId());
         res.setType(listing.getType());
-        res.setBuildingName(listing.getDetails().getBuildingName());
-        res.setDescription(listing.getDetails().getDescription());
-        res.setAddress(listing.getDetails().getAddress());
-        res.setStartDate(listing.getPeriod().getStartDate());
-        res.setEndDate(listing.getPeriod().getEndDate());
-        res.setGuests(listing.getPeriod().getGuests());
-        res.setPrice(listing.getPricing().getPrice());
-        res.setPhotos(listing.getPhotos().stream()
-                .map(ListingPhoto::getUrl)
-                .collect(Collectors.toList()));
+        res.setBuildingName(d.getBuildingName());
+        res.setDescription(d.getDescription());
+        res.setAddress(d.getAddress());
+        res.setStartDate(p.getStartDate());   // TRANSFER면 null 그대로 내려가도 OK
+        res.setEndDate(p.getEndDate());
+        res.setGuests(p.getGuests());
+        res.setPrice(pr.getPrice());
+        res.setPhotos(
+                listing.getPhotos().stream().map(ListingPhoto::getUrl).collect(Collectors.toList())
+        );
         res.setViewCount(listing.getViewCount());
         res.setCreatedAt(listing.getCreatedAt());
         res.setUpdatedAt(listing.getUpdatedAt());
