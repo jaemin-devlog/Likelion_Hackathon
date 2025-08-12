@@ -164,7 +164,6 @@ public class ListingService {
         Listing l = listingRepository.findByIdAndType(id, ListingType.STAY)
                 .orElseThrow(() -> new IllegalArgumentException("Listing not found"));
         StayDetailResponse dto = new StayDetailResponse();
-        dto.setId(l.getId());
         dto.setPhotos(l.getPhotos().stream().map(ListingPhoto::getUrl).collect(Collectors.toList()));
         dto.setBuildingName(l.getDetails().getBuildingName());
         dto.setStartDate(l.getPeriod().getStartDate());
@@ -173,6 +172,8 @@ public class ListingService {
         dto.setPrice(l.getPricing().getPrice());
         dto.setDescription(l.getDetails().getDescription());
         dto.setAddress(l.getDetails().getAddress()); // 프런트에서 지도 표기용으로 사용
+        dto.setType(l.getType());
+
         return dto;
     }
 
@@ -183,12 +184,15 @@ public class ListingService {
                 .orElseThrow(() -> new IllegalArgumentException("Listing not found"));
 
         TransferDetailResponse dto = new TransferDetailResponse();
-        dto.setId(l.getId());
         dto.setPhotos(l.getPhotos().stream().map(ListingPhoto::getUrl).collect(Collectors.toList()));
         dto.setBuildingName(l.getDetails().getBuildingName());
         dto.setPrice(l.getPricing().getPrice());
         dto.setAddress(l.getDetails().getAddress());
         dto.setDescription(l.getDetails().getDescription());
+        dto.setStartDate(l.getPeriod().getStartDate());
+        dto.setEndDate(l.getPeriod().getEndDate());
+        dto.setType(l.getType());
+
         return dto;
     }
 
