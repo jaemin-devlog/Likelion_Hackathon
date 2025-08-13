@@ -10,7 +10,10 @@ import org.likelion.hsu.likelion_hackathon.Repository.ListingRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.likelion.hsu.likelion_hackathon.Dto.Response.ListingSearchItem;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
+import java.util.ArrayList;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -21,10 +24,29 @@ public class ListingService {
 
     private final ListingRepository listingRepository;
     private final ListingPhotoRepository photoRepository;
+    private final FileStorageService fileStorageService;
 
-    public ListingService(ListingRepository listingRepository, ListingPhotoRepository photoRepository) {
+    public ListingService(ListingRepository listingRepository,
+                          ListingPhotoRepository photoRepository,
+                          FileStorageService fileStorageService) {
         this.listingRepository = listingRepository;
         this.photoRepository = photoRepository;
+        this.fileStorageService = fileStorageService;
+    }
+
+    /** ★ 원샷 등록: 파일 저장 → photos URL 주입 → 기존 create 재사용 */
+    public ListingResponse createWithUpload(ListingCreateRequest req,
+                                            List<MultipartFile> files) throws IOException {
+        List<String> urls = new ArrayList<>();
+        if (files != null) {
+            for (MultipartFile f : files) {
+                if (f != null && !f.isEmpty()) {
+                    urls.add(fileStorageService.saveImage(f)); // /images/... URL 생성
+                }
+            }
+        }
+        req.setPhotos(urls);
+        return create(req);
     }
 
     /** 매물 등록 */

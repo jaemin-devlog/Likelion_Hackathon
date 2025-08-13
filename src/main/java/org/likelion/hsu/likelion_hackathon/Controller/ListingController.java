@@ -4,11 +4,16 @@ import org.likelion.hsu.likelion_hackathon.Dto.Request.ListingCreateRequest;
 import org.likelion.hsu.likelion_hackathon.Dto.Request.ListingUpdateRequest;
 import org.likelion.hsu.likelion_hackathon.Dto.Response.*;
 import org.likelion.hsu.likelion_hackathon.Service.ListingService;
+import org.likelion.hsu.likelion_hackathon.Service.FileStorageService;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 
 @RestController
@@ -16,15 +21,44 @@ import java.util.List;
 public class ListingController {
 
     private final ListingService listingService;
+    private final FileStorageService fileStorageService;
+    private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
 
-    public ListingController(ListingService listingService) {
+    public ListingController(ListingService listingService,
+                             FileStorageService fileStorageService,
+                             com.fasterxml.jackson.databind.ObjectMapper objectMapper) {
         this.listingService = listingService;
+        this.fileStorageService = fileStorageService;
+        this.objectMapper = objectMapper;
     }
 
-    /* 숙박,양도 매물 등록 */
-    @PostMapping(consumes = "application/json", produces = "application/json")
-    public ResponseEntity<ListingResponse> create(@RequestBody ListingCreateRequest req) {
-        return ResponseEntity.ok(listingService.create(req));
+    /* 숙박, 양도 매물 등록: 업로드+등록 원샷 (멀티파트: data(JSON) + files[]) */
+    @PostMapping(
+            path = "/with-upload",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
+            produces = "application/json"
+    )
+    public ResponseEntity<ListingResponse> createWithUpload(
+            @RequestPart("data") String jsonData,                                  // ★ String으로 받기
+            @RequestPart(value = "files", required = false) List<MultipartFile> files // ★ List로 받기
+    ) throws IOException {
+
+        // JSON → DTO
+        ListingCreateRequest data = objectMapper.readValue(jsonData, ListingCreateRequest.class);
+
+        // 파일 저장 → URL 수집
+        List<String> urls = new ArrayList<>();
+        if (files != null) {
+            for (MultipartFile f : files) {
+                if (f != null && !f.isEmpty()) {
+                    urls.add(fileStorageService.saveImage(f)); // /images/... URL
+                }
+            }
+        }
+
+        // DTO에 사진 URL 주입 후 기존 로직 재사용
+        data.setPhotos(urls);
+        return ResponseEntity.ok(listingService.create(data));
     }
 
     /* 숙박 전체 리스트 (대표사진1, 건물명, 기간, 금액) */
