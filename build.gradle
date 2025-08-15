@@ -31,6 +31,10 @@ dependencies {
     annotationProcessor 'org.projectlombok:lombok'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+    //AI 의존성
+    implementation 'org.springframework.boot:spring-boot-starter-webflux'   // WebClient
+    implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310' // LocalDate 직렬화
 }
 
 tasks.named('test') {
