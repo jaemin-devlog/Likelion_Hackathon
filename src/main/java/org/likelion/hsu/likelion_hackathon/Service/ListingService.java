@@ -9,13 +9,13 @@ import org.likelion.hsu.likelion_hackathon.Repository.ListingPhotoRepository;
 import org.likelion.hsu.likelion_hackathon.Repository.ListingRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.likelion.hsu.likelion_hackathon.Dto.Response.ListingSearchItem;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.util.ArrayList;
 import java.time.LocalDate;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -34,27 +34,34 @@ public class ListingService {
         this.fileStorageService = fileStorageService;
     }
 
-    /** ★ 원샷 등록: 파일 저장 → photos URL 주입 → 기존 create 재사용 */
+    /* 원샷 등록: 파일 저장 → photos URL 주입 → 기존 create 재사용 (실패시 업로드 파일 정리) */
     public ListingResponse createWithUpload(ListingCreateRequest req,
                                             List<MultipartFile> files) throws IOException {
-        List<String> urls = new ArrayList<>();
-        if (files != null) {
-            for (MultipartFile f : files) {
-                if (f != null && !f.isEmpty()) {
-                    urls.add(fileStorageService.saveImage(f)); // /images/... URL 생성
+        List<String> uploaded = new ArrayList<>();
+        try {
+            if (files != null) {
+                for (MultipartFile f : files) {
+                    if (f != null && !f.isEmpty()) {
+                        uploaded.add(fileStorageService.saveImage(f)); // /images/... URL 생성
+                    }
                 }
             }
+            req.setPhotos(uploaded);
+            // DB 작업까지 시도
+            return create(req);
+        } catch (Exception e) {
+            // DB에 저장 실패 등 예외 시, 지금까지 올린 파일은 정리
+            safeDeleteFiles(uploaded);
+            throw e;
         }
-        req.setPhotos(urls);
-        return create(req);
     }
 
-    /** 매물 등록 */
+    /* 매물 등록 */
     public ListingResponse create(ListingCreateRequest req) {
         Listing listing = new Listing();
         listing.setType(req.getType());
 
-        // Embedded 값 세팅
+        // Embedded 값 세팅 (널 허용)
         ListingDetails details = new ListingDetails();
         details.setBuildingName(req.getBuildingName());
         details.setDescription(req.getDescription());
@@ -78,6 +85,7 @@ public class ListingService {
         // 사진 URL 저장
         if (req.getPhotos() != null) {
             for (String url : req.getPhotos()) {
+                if (url == null || url.isBlank()) continue;
                 ListingPhoto photo = new ListingPhoto();
                 photo.setUrl(url);
                 photo.setListing(listing);
@@ -89,7 +97,7 @@ public class ListingService {
         return toResponse(listing);
     }
 
-    /** 매물 전체 조회 */
+    /* 매물 전체 조회 */
     @Transactional(readOnly = true)
     public List<ListingResponse> findAll() {
         return listingRepository.findAll()
@@ -98,37 +106,42 @@ public class ListingService {
                 .collect(Collectors.toList());
     }
 
-    /** 숙박 전체 리스트 (카드용) */
+    /* 숙박 전체 리스트 (카드용) */
     @Transactional(readOnly = true)
     public List<StayTopItem> getStayList() {
         return listingRepository.findByType(ListingType.STAY)
                 .stream()
                 .map(l -> {
+                    ListingDetails d  = (l.getDetails()  != null) ? l.getDetails()  : new ListingDetails();
+                    ListingPeriod  p  = (l.getPeriod()   != null) ? l.getPeriod()   : new ListingPeriod();
+                    ListingPricing pr = (l.getPricing()  != null) ? l.getPricing()  : new ListingPricing();
+
                     StayTopItem dto = new StayTopItem();
                     dto.setId(l.getId());
                     dto.setThumbnailUrl(l.getPhotos().isEmpty() ? null : l.getPhotos().get(0).getUrl());
-                    dto.setBuildingName(l.getDetails().getBuildingName());
-                    dto.setStartDate(l.getPeriod().getStartDate());
-                    dto.setEndDate(l.getPeriod().getEndDate());
-                    dto.setPrice(l.getPricing().getPrice());
+                    dto.setBuildingName(d.getBuildingName());
+                    dto.setStartDate(p.getStartDate());
+                    dto.setEndDate(p.getEndDate());
+                    dto.setPrice(pr.getPrice());
                     return dto;
                 })
                 .collect(Collectors.toList());
     }
 
-    /** 양도 전체 리스트 (카드용) */
+    /* 양도 전체 리스트 (카드용) */
     @Transactional(readOnly = true)
     public List<TransferTopItem> getTransferList() {
         return listingRepository.findByType(ListingType.TRANSFER)
                 .stream()
                 .map(l -> {
+                    ListingDetails d  = (l.getDetails()  != null) ? l.getDetails()  : new ListingDetails();
+                    ListingPricing pr = (l.getPricing()  != null) ? l.getPricing()  : new ListingPricing();
+
                     TransferTopItem dto = new TransferTopItem();
                     dto.setId(l.getId());
-                    dto.setThumbnailUrl(
-                            l.getPhotos().isEmpty() ? null : l.getPhotos().get(0).getUrl()
-                    );
-                    dto.setBuildingName(l.getDetails().getBuildingName()); // ← 여기 추가
-                    dto.setPrice(l.getPricing().getPrice());
+                    dto.setThumbnailUrl(l.getPhotos().isEmpty() ? null : l.getPhotos().get(0).getUrl());
+                    dto.setBuildingName(d.getBuildingName());
+                    dto.setPrice(pr.getPrice());
                     return dto;
                 })
                 .collect(Collectors.toList());
@@ -142,21 +155,23 @@ public class ListingService {
                                         Integer minPrice,
                                         Integer maxPrice) {
 
-        // Repository에서 동적 조건 검색
         List<Listing> list = listingRepository.searchStay(
                 ListingType.STAY, name, startDate, endDate, minPrice, maxPrice
         );
 
-        // 카드 UI용 DTO 매핑 (대표사진 1장 + 건물명 + 날짜 + 금액)
         return list.stream()
                 .map(l -> {
+                    ListingDetails d  = (l.getDetails()  != null) ? l.getDetails()  : new ListingDetails();
+                    ListingPeriod  p  = (l.getPeriod()   != null) ? l.getPeriod()   : new ListingPeriod();
+                    ListingPricing pr = (l.getPricing()  != null) ? l.getPricing()  : new ListingPricing();
+
                     StayTopItem dto = new StayTopItem();
                     dto.setId(l.getId());
                     dto.setThumbnailUrl(l.getPhotos().isEmpty() ? null : l.getPhotos().get(0).getUrl());
-                    dto.setBuildingName(l.getDetails().getBuildingName());
-                    dto.setStartDate(l.getPeriod().getStartDate());
-                    dto.setEndDate(l.getPeriod().getEndDate());
-                    dto.setPrice(l.getPricing().getPrice());
+                    dto.setBuildingName(d.getBuildingName());
+                    dto.setStartDate(p.getStartDate());
+                    dto.setEndDate(p.getEndDate());
+                    dto.setPrice(pr.getPrice());
                     return dto;
                 })
                 .collect(Collectors.toList());
@@ -166,15 +181,19 @@ public class ListingService {
     @Transactional(readOnly = true)
     public List<ListingSearchItem> searchAllByName(String name) {
         return listingRepository.searchByBuildingName(name).stream().map(l -> {
+            ListingDetails d  = (l.getDetails()  != null) ? l.getDetails()  : new ListingDetails();
+            ListingPeriod  p  = (l.getPeriod()   != null) ? l.getPeriod()   : new ListingPeriod();
+            ListingPricing pr = (l.getPricing()  != null) ? l.getPricing()  : new ListingPricing();
+
             ListingSearchItem dto = new ListingSearchItem();
             dto.setId(l.getId());
             dto.setType(l.getType());
             dto.setThumbnailUrl(l.getPhotos().isEmpty() ? null : l.getPhotos().get(0).getUrl());
-            dto.setBuildingName(l.getDetails().getBuildingName());
-            dto.setPrice(l.getPricing().getPrice());
+            dto.setBuildingName(d.getBuildingName());
+            dto.setPrice(pr.getPrice());
             if (l.getType() == ListingType.STAY) {
-                dto.setStartDate(l.getPeriod().getStartDate());
-                dto.setEndDate(l.getPeriod().getEndDate());
+                dto.setStartDate(p.getStartDate());
+                dto.setEndDate(p.getEndDate());
             }
             return dto;
         }).collect(Collectors.toList());
@@ -186,7 +205,6 @@ public class ListingService {
         Listing l = listingRepository.findByIdAndType(id, ListingType.STAY)
                 .orElseThrow(() -> new IllegalArgumentException("Listing not found"));
 
-        // ← 널 가드
         ListingDetails d  = (l.getDetails()  != null) ? l.getDetails()  : new ListingDetails();
         ListingPeriod  p  = (l.getPeriod()   != null) ? l.getPeriod()   : new ListingPeriod();
         ListingPricing pr = (l.getPricing()  != null) ? l.getPricing()  : new ListingPricing();
@@ -195,7 +213,7 @@ public class ListingService {
         dto.setType(l.getType());
         dto.setPhotos(l.getPhotos().stream().map(ListingPhoto::getUrl).toList());
         dto.setBuildingName(d.getBuildingName());
-        dto.setStartDate(p.getStartDate());  // null이어도 OK
+        dto.setStartDate(p.getStartDate());
         dto.setEndDate(p.getEndDate());
         dto.setGuests(p.getGuests());
         dto.setPrice(pr.getPrice());
@@ -210,7 +228,6 @@ public class ListingService {
         Listing l = listingRepository.findByIdAndType(id, ListingType.TRANSFER)
                 .orElseThrow(() -> new IllegalArgumentException("Listing not found"));
 
-        // ← 널 가드
         ListingDetails d  = (l.getDetails()  != null) ? l.getDetails()  : new ListingDetails();
         ListingPeriod  p  = (l.getPeriod()   != null) ? l.getPeriod()   : new ListingPeriod();
         ListingPricing pr = (l.getPricing()  != null) ? l.getPricing()  : new ListingPricing();
@@ -227,7 +244,7 @@ public class ListingService {
         return dto;
     }
 
-    /** 타입별 조회 */
+    /* 타입별 조회 */
     @Transactional(readOnly = true)
     public List<ListingResponse> findByType(ListingType type) {
         return listingRepository.findByType(type)
@@ -236,13 +253,12 @@ public class ListingService {
                 .collect(Collectors.toList());
     }
 
-    /** 매물 수정 */
+    /* 매물 수정 (사진 교체 시, 제거된 사진 파일은 커밋 후 실제 삭제) */
     public ListingResponse update(Long id, ListingUpdateRequest req) {
         Listing listing = listingRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Listing not found"));
         validatePin(listing, req.getPin());
 
-        // 과거 TRANSFER 데이터 대비: 임베디드 널 방어
         if (listing.getDetails() == null) listing.setDetails(new ListingDetails());
         if (listing.getPeriod()  == null) listing.setPeriod(new ListingPeriod());
         if (listing.getPricing() == null) listing.setPricing(new ListingPricing());
@@ -258,30 +274,63 @@ public class ListingService {
 
         // 사진 전체 교체
         if (req.getPhotos() != null) {
+            // 기존 URL들 백업
+            List<String> oldUrls = listing.getPhotos().stream()
+                    .map(ListingPhoto::getUrl)
+                    .filter(Objects::nonNull)
+                    .toList();
+
+            // DB에서 모두 교체
             photoRepository.deleteByListing_Id(listing.getId());
             listing.getPhotos().clear();
             for (String url : req.getPhotos()) {
+                if (url == null || url.isBlank()) continue;
                 ListingPhoto photo = new ListingPhoto();
                 photo.setUrl(url);
                 photo.setListing(listing);
                 photoRepository.save(photo);
                 listing.getPhotos().add(photo);
             }
+
+            // 새 URL 집합
+            Set<String> newSet = listing.getPhotos().stream()
+                    .map(ListingPhoto::getUrl)
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toSet());
+
+            // 제거된 파일만 선별
+            List<String> removed = oldUrls.stream()
+                    .filter(u -> !newSet.contains(u))
+                    .toList();
+
+            // 트랜잭션 커밋 후 실제 파일 삭제
+            runAfterCommit(() -> safeDeleteFiles(removed));
         }
 
         return toResponse(listing);
     }
 
-    /** 매물 삭제 */
+    /* 매물 삭제 (DB 삭제 커밋 후 실제 파일 삭제) */
     public void delete(Long id, String pin) {
         Listing listing = listingRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Listing not found"));
         validatePin(listing, pin);
+
+        // 삭제될 파일 URL 확보
+        List<String> urls = listing.getPhotos().stream()
+                .map(ListingPhoto::getUrl)
+                .filter(Objects::nonNull)
+                .toList();
+
+        // DB 삭제
         photoRepository.deleteByListing_Id(listing.getId());
         listingRepository.delete(listing);
+
+        // 커밋 후 실제 파일 삭제
+        runAfterCommit(() -> safeDeleteFiles(urls));
     }
 
-    /** 조회수 증가 */
+    /* 조회수 증가 */
     @Transactional
     public void increaseView(Long id) {
         if (listingRepository.increaseView(id) == 0) {
@@ -289,45 +338,48 @@ public class ListingService {
         }
     }
 
-    /** 숙박 매물 Top10 (대표사진+건물명+날짜+금액) */
+    /* 숙박 매물 Top10 (대표사진+건물명+날짜+금액) */
     @Transactional(readOnly = true)
     public List<StayTopItem> getTop10StayListings() {
         return listingRepository.findTop10ByTypeOrderByViewCountDescCreatedAtDesc(ListingType.STAY)
                 .stream()
                 .map(listing -> {
+                    ListingDetails d  = (listing.getDetails()  != null) ? listing.getDetails()  : new ListingDetails();
+                    ListingPeriod  p  = (listing.getPeriod()   != null) ? listing.getPeriod()   : new ListingPeriod();
+                    ListingPricing pr = (listing.getPricing()  != null) ? listing.getPricing()  : new ListingPricing();
+
                     StayTopItem dto = new StayTopItem();
                     dto.setId(listing.getId());
-                    dto.setThumbnailUrl(
-                            listing.getPhotos().isEmpty() ? null : listing.getPhotos().get(0).getUrl()
-                    );
-                    dto.setBuildingName(listing.getDetails().getBuildingName());
-                    dto.setStartDate(listing.getPeriod().getStartDate());
-                    dto.setEndDate(listing.getPeriod().getEndDate());
-                    dto.setPrice(listing.getPricing().getPrice());
+                    dto.setThumbnailUrl(listing.getPhotos().isEmpty() ? null : listing.getPhotos().get(0).getUrl());
+                    dto.setBuildingName(d.getBuildingName());
+                    dto.setStartDate(p.getStartDate());
+                    dto.setEndDate(p.getEndDate());
+                    dto.setPrice(pr.getPrice());
                     return dto;
                 })
                 .collect(Collectors.toList());
     }
 
-    /** 양도 매물 Top10 (대표사진+건물명+금액) */
+    /* 양도 매물 Top10 (대표사진+건물명+금액) */
     @Transactional(readOnly = true)
     public List<TransferTopItem> getTop10TransferListings() {
         return listingRepository.findTop10ByTypeOrderByViewCountDescCreatedAtDesc(ListingType.TRANSFER)
                 .stream()
                 .map(listing -> {
+                    ListingDetails d  = (listing.getDetails()  != null) ? listing.getDetails()  : new ListingDetails();
+                    ListingPricing pr = (listing.getPricing()  != null) ? listing.getPricing()  : new ListingPricing();
+
                     TransferTopItem dto = new TransferTopItem();
                     dto.setId(listing.getId());
-                    dto.setThumbnailUrl(
-                            listing.getPhotos().isEmpty() ? null : listing.getPhotos().get(0).getUrl()
-                    );
-                    dto.setBuildingName(listing.getDetails().getBuildingName()); // ← 추가
-                    dto.setPrice(listing.getPricing().getPrice());
+                    dto.setThumbnailUrl(listing.getPhotos().isEmpty() ? null : listing.getPhotos().get(0).getUrl());
+                    dto.setBuildingName(d.getBuildingName());
+                    dto.setPrice(pr.getPrice());
                     return dto;
                 })
                 .collect(Collectors.toList());
     }
 
-    // ==== 내부 메서드 ====
+    /* ==== 내부 메서드 ==== */
     private void validatePin(Listing listing, String pin) {
         if (pin == null || !pin.equals(listing.getPin())) {
             throw new SecurityException("Invalid PIN");
@@ -337,7 +389,6 @@ public class ListingService {
     private ListingResponse toResponse(Listing listing) {
         ListingResponse res = new ListingResponse();
 
-        // 널 가드: 임베디드가 null이어도 안전
         ListingDetails d  = (listing.getDetails()  != null) ? listing.getDetails()  : new ListingDetails();
         ListingPeriod  p  = (listing.getPeriod()   != null) ? listing.getPeriod()   : new ListingPeriod();
         ListingPricing pr = (listing.getPricing()  != null) ? listing.getPricing()  : new ListingPricing();
@@ -347,16 +398,36 @@ public class ListingService {
         res.setBuildingName(d.getBuildingName());
         res.setDescription(d.getDescription());
         res.setAddress(d.getAddress());
-        res.setStartDate(p.getStartDate());   // TRANSFER면 null 그대로 내려가도 OK
+        res.setStartDate(p.getStartDate());
         res.setEndDate(p.getEndDate());
         res.setGuests(p.getGuests());
         res.setPrice(pr.getPrice());
-        res.setPhotos(
-                listing.getPhotos().stream().map(ListingPhoto::getUrl).collect(Collectors.toList())
-        );
+        res.setPhotos(listing.getPhotos().stream().map(ListingPhoto::getUrl).collect(Collectors.toList()));
         res.setViewCount(listing.getViewCount());
         res.setCreatedAt(listing.getCreatedAt());
         res.setUpdatedAt(listing.getUpdatedAt());
         return res;
+    }
+
+    /* 트랜잭션 커밋 후 실행 */
+    private void runAfterCommit(Runnable r) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override public void afterCommit() { r.run(); }
+            });
+        } else {
+            // 트랜잭션이 없으면 즉시 실행
+            r.run();
+        }
+    }
+
+    /* 파일 삭제 (예외 무시 - 로깅 필요시 확장) */
+    private void safeDeleteFiles(Collection<String> urls) {
+        if (urls == null || urls.isEmpty()) return;
+        try {
+            fileStorageService.deleteAllByUrls(urls);
+        } catch (Exception ignored) {
+            // 필요하면 로거로 남기기
+        }
     }
 }
