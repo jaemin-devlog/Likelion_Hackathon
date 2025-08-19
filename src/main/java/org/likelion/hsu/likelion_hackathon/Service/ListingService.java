@@ -180,41 +180,50 @@ public class ListingService {
         }).collect(Collectors.toList());
     }
 
-    /* 숙박 상세 조회*/
+    /* 숙박 상세 조회 */
     @Transactional(readOnly = true)
     public StayDetailResponse getStayDetail(Long id) {
         Listing l = listingRepository.findByIdAndType(id, ListingType.STAY)
                 .orElseThrow(() -> new IllegalArgumentException("Listing not found"));
-        StayDetailResponse dto = new StayDetailResponse();
-        dto.setPhotos(l.getPhotos().stream().map(ListingPhoto::getUrl).collect(Collectors.toList()));
-        dto.setBuildingName(l.getDetails().getBuildingName());
-        dto.setStartDate(l.getPeriod().getStartDate());
-        dto.setEndDate(l.getPeriod().getEndDate());
-        dto.setGuests(l.getPeriod().getGuests());
-        dto.setPrice(l.getPricing().getPrice());
-        dto.setDescription(l.getDetails().getDescription());
-        dto.setAddress(l.getDetails().getAddress()); // 프런트에서 지도 표기용으로 사용
-        dto.setType(l.getType());
 
+        // ← 널 가드
+        ListingDetails d  = (l.getDetails()  != null) ? l.getDetails()  : new ListingDetails();
+        ListingPeriod  p  = (l.getPeriod()   != null) ? l.getPeriod()   : new ListingPeriod();
+        ListingPricing pr = (l.getPricing()  != null) ? l.getPricing()  : new ListingPricing();
+
+        StayDetailResponse dto = new StayDetailResponse();
+        dto.setType(l.getType());
+        dto.setPhotos(l.getPhotos().stream().map(ListingPhoto::getUrl).toList());
+        dto.setBuildingName(d.getBuildingName());
+        dto.setStartDate(p.getStartDate());  // null이어도 OK
+        dto.setEndDate(p.getEndDate());
+        dto.setGuests(p.getGuests());
+        dto.setPrice(pr.getPrice());
+        dto.setDescription(d.getDescription());
+        dto.setAddress(d.getAddress());
         return dto;
     }
 
-    /* 양도 상세 조회*/
+    /* 양도 상세 조회 */
     @Transactional(readOnly = true)
     public TransferDetailResponse getTransferDetail(Long id) {
         Listing l = listingRepository.findByIdAndType(id, ListingType.TRANSFER)
                 .orElseThrow(() -> new IllegalArgumentException("Listing not found"));
 
-        TransferDetailResponse dto = new TransferDetailResponse();
-        dto.setPhotos(l.getPhotos().stream().map(ListingPhoto::getUrl).collect(Collectors.toList()));
-        dto.setBuildingName(l.getDetails().getBuildingName());
-        dto.setPrice(l.getPricing().getPrice());
-        dto.setAddress(l.getDetails().getAddress());
-        dto.setDescription(l.getDetails().getDescription());
-        dto.setStartDate(l.getPeriod().getStartDate());
-        dto.setEndDate(l.getPeriod().getEndDate());
-        dto.setType(l.getType());
+        // ← 널 가드
+        ListingDetails d  = (l.getDetails()  != null) ? l.getDetails()  : new ListingDetails();
+        ListingPeriod  p  = (l.getPeriod()   != null) ? l.getPeriod()   : new ListingPeriod();
+        ListingPricing pr = (l.getPricing()  != null) ? l.getPricing()  : new ListingPricing();
 
+        TransferDetailResponse dto = new TransferDetailResponse();
+        dto.setType(l.getType());
+        dto.setPhotos(l.getPhotos().stream().map(ListingPhoto::getUrl).toList());
+        dto.setBuildingName(d.getBuildingName());
+        dto.setPrice(pr.getPrice());
+        dto.setStartDate(p.getStartDate());
+        dto.setEndDate(p.getEndDate());
+        dto.setAddress(d.getAddress());
+        dto.setDescription(d.getDescription());
         return dto;
     }
 
