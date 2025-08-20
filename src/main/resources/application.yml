@@ -1,29 +1,29 @@
 server:
-  port: 8080
+  port: ${PORT:8080}
 
 spring:
   datasource:
-    # 2단계에서 Render에 만든 변수 이름과 정확히 일치합니다.
     url: ${DATABASE_URL}
     username: ${MYSQLUSER}
     password: ${MYSQLPASSWORD}
   jpa:
     hibernate:
-      ddl-auto: create
+      ddl-auto: update
     properties:
       hibernate:
         dialect: org.hibernate.dialect.MySQLDialect
     show-sql: false
 
+openai:
+  api:
+    key: ${OPENAI_API_KEY}
+    url: https://api.openai.com/v1/chat/completions
+
 logging:
   level:
     org.hibernate.SQL: INFO
     root: INFO
-openai:
-  api:
-    key: ${OPENAI_API_KEY}
 
 app:
   upload:
     dir: /var/data/uploads
-
