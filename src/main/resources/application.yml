@@ -5,8 +5,8 @@ spring:
   datasource:
     # 2단계에서 Render에 만든 변수 이름과 정확히 일치합니다.
     url: ${DATABASE_URL}
-    username: ${DATABASE_USERNAME}
-    password: ${DATABASE_PASSWORD}
+    username: ${MYSQLUSER}
+    password: ${MYSQLPASSWORD}
   jpa:
     hibernate:
       ddl-auto: create
